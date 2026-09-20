@@ -1,251 +1,219 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Kamera Uygulaması</title>
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+name: Otomatik Kamera Uygulaması Oluştur ve APK Derle
+
+on:
+  push:
+    branches: [ "main", "master", "ana" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-generate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 1. Repoyu Hazırla
+      uses: actions/checkout@v4
+
+    - name: 2. Java 17 Ortamını Kur
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: 3. Kamera Uygulaması Kodlarını ve Proje Yapısını Oluştur
+      run: |
+        mkdir -p app/src/main/java/com/example/cameraapp
+        mkdir -p app/src/main/res/layout
+        mkdir -p app/src/main/res/values
+
+        # Root build.gradle
+        cat << 'EOF' > build.gradle
+        buildscript {
+            repositories { google(); mavenCentral() }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:8.1.1'
+                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.10'
+            }
+        }
+        allprojects {
+            repositories { google(); mavenCentral() }
+        }
+        EOF
+
+        # settings.gradle
+        cat << 'EOF' > settings.gradle
+        include ':app'
+        rootProject.name = "CameraApp"
+        EOF
+
+        # app/build.gradle
+        cat << 'EOF' > app/build.gradle
+        apply plugin: 'com.android.application'
+        apply plugin: 'kotlin-android'
+
+        android {
+            compileSdk 33
+            namespace 'com.example.cameraapp'
+            defaultConfig {
+                applicationId "com.example.cameraapp"
+                minSdk 21
+                targetSdk 33
+                versionCode 1
+                versionName "1.0"
+            }
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+            kotlinOptions { jvmTarget = '17' }
         }
 
-        body {
-            background-color: #0f172a;
-            color: #ffffff;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            overflow: hidden;
+        dependencies {
+            implementation 'androidx.core:core-ktx:1.9.0'
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+            implementation 'com.google.android.material:material:1.8.0'
+            implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+            
+            def camerax_version = "1.2.2"
+            implementation "androidx.camera:camera-core:${camerax_version}"
+            implementation "androidx.camera:camera-camera2:${camerax_version}"
+            implementation "androidx.camera:camera-lifecycle:${camerax_version}"
+            implementation "androidx.camera:camera-view:${camerax_version}"
         }
+        EOF
 
-        .camera-container {
-            position: relative;
-            width: 100%;
-            max-width: 600px;
-            height: 80vh;
-            background-color: #000000;
-            border-radius: 20px;
-            overflow: hidden;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        # AndroidManifest.xml
+        cat << 'EOF' > app/src/main/AndroidManifest.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-feature android:name="android.hardware.camera.any" />
+            <uses-permission android:name="android.permission.CAMERA" />
+            <application
+                android:allowBackup="true"
+                android:icon="@mipmap/ic_launcher"
+                android:label="Pro Kamera"
+                android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar">
+                <activity android:name=".MainActivity" android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOF
+
+        # activity_main.xml (Arayüz)
+        cat << 'EOF' > app/src/main/res/layout/activity_main.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <androidx.constraintlayout.widget.ConstraintLayout 
+            xmlns:android="http://schemas.android.com/apk/res/android"
+            xmlns:app="http://schemas.android.com/apk/res-auto"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+            <androidx.camera.view.PreviewView
+                android:id="@+id/viewFinder"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+            <Button
+                android:id="@+id/image_capture_button"
+                android:layout_width="100dp"
+                android:layout_height="100dp"
+                android:layout_marginBottom="50dp"
+                android:text="ÇEK"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+        EOF
+
+        # MainActivity.kt (Kamera Mantık Kodu)
+        cat << 'EOF' > app/src/main/java/com/example/cameraapp/MainActivity.kt
+        package com.example.cameraapp
+
+        import android.Manifest
+        import android.content.pm.PackageManager
+        import android.os.Bundle
+        import android.widget.Button
+        import android.widget.Toast
+        import androidx.appcompat.app.AppCompatActivity
+        import androidx.camera.core.CameraSelector
+        import androidx.camera.core.ImageCapture
+        import androidx.camera.core.ImageCaptureException
+        import androidx.camera.core.Preview
+        import androidx.camera.lifecycle.ProcessCameraProvider
+        import androidx.camera.view.PreviewView
+        import androidx.core.app.ActivityCompat
+        import androidx.core.content.ContextCompat
+
+        class MainActivity : AppCompatActivity() {
+            private var imageCapture: ImageCapture? = null
+            private lateinit var viewFinder: PreviewView
+
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                setContentView(R.layout.activity_main)
+
+                viewFinder = findViewById(R.id.viewFinder)
+
+                if (allPermissionsGranted()) {
+                    startCamera()
+                } else {
+                    ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 10)
+                }
+
+                findViewById<Button>(R.id.image_capture_button).setOnClickListener { takePhoto() }
+            }
+
+            private fun startCamera() {
+                val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+                cameraProviderFuture.addListener({
+                    val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+                    val preview = Preview.Builder().build().also {
+                        it.setSurfaceProvider(viewFinder.surfaceProvider)
+                    }
+                    imageCapture = ImageCapture.Builder().build()
+                    val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                    try {
+                        cameraProvider.unbindAll()
+                        cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
+                    } catch (exc: Exception) {
+                        Toast.makeText(this, "Kamera açılamadı", Toast.LENGTH_SHORT).show()
+                    }
+                }, ContextCompat.getMainExecutor(this))
+            }
+
+            private fun takePhoto() {
+                val imageCapture = imageCapture ?: return
+                imageCapture.takePicture(
+                    ContextCompat.getMainExecutor(this),
+                    object : ImageCapture.OnImageCapturedCallback() {
+                        override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
+                            Toast.makeText(baseContext, "Fotoğraf Başarıyla Çekildi!", Toast.LENGTH_SHORT).show()
+                            image.close()
+                        }
+                        override fun onError(exc: ImageCaptureException) {
+                            Toast.makeText(baseContext, "Hata oluştu", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+            }
+
+            private fun allPermissionsGranted() = ContextCompat.checkSelfPermission(
+                baseContext, Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
         }
+        EOF
 
-        video, canvas {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+    - name: 4. Gradle Wrapper Kurulumu
+      run: |
+        gradle wrapper
 
-        canvas {
-            display: none;
-        }
+    - name: 5. APK Derleme İşlemi (Build)
+      run: ./gradlew assembleDebug --stacktrace
 
-        .controls {
-            position: absolute;
-            bottom: 30px;
-            left: 0;
-            right: 0;
-            display: flex;
-            justify-content: space-evenly;
-            align-items: center;
-            padding: 0 20px;
-            z-index: 10;
-        }
-
-        .btn {
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(10px);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 50px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.05);
-        }
-
-        .btn:active {
-            transform: scale(0.95);
-        }
-
-        .btn-capture {
-            width: 70px;
-            height: 70px;
-            border-radius: 50%;
-            background: #ffffff;
-            border: 4px solid rgba(255, 255, 255, 0.5);
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
-        }
-
-        .btn-capture::after {
-            content: '';
-            width: 52px;
-            height: 52px;
-            background: #ffffff;
-            border-radius: 50%;
-            border: 2px solid #000;
-        }
-
-        .btn-capture:hover {
-            background: #f0f0f0;
-            transform: scale(1.08);
-        }
-
-        .flash {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: white;
-            opacity: 0;
-            pointer-events: none;
-            z-index: 20;
-        }
-
-        .flash.active {
-            animation: flashAnim 0.3s ease-out;
-        }
-
-        @keyframes flashAnim {
-            0% { opacity: 0.8; }
-            100% { opacity: 0; }
-        }
-
-        .status-msg {
-            position: absolute;
-            top: 20px;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 12px;
-            backdrop-filter: blur(5px);
-        }
-    </style>
-</head>
-<body>
-
-    <div class="camera-container">
-        <div id="flash" class="flash"></div>
-        <div class="status-msg" id="status">Kamera Hazırlanıyor...</div>
+    - name: 6. Hazır APK Dosyasını Yükle
+      uses: actions/upload-artifact@v4
+      with:
+        name: Kamera-Uygulamasi-APK
+        path: app/build/outputs/apk/debug/*.apk
         
-        <video id="webcam" autoplay playsinline></video>
-        <canvas id="canvas"></canvas>
-
-        <div class="controls">
-            <button class="btn" id="switch-btn" onclick="switchCamera()">
-                🔄 Çevir
-            </button>
-            
-            <button class="btn btn-capture" onclick="takePhoto()" aria-label="Fotoğraf Çek"></button>
-            
-            <a id="download-link" style="display: none;"></a>
-            <button class="btn" id="download-btn" onclick="downloadPhoto()" style="opacity: 0.5; pointer-events: none;">
-                💾 İndir
-            </button>
-        </div>
-    </div>
-
-    <script>
-        const video = document.getElementById('webcam');
-        const canvas = document.getElementById('canvas');
-        const statusText = document.getElementById('status');
-        const downloadBtn = document.getElementById('download-btn');
-        const downloadLink = document.getElementById('download-link');
-        const flash = document.getElementById('flash');
-        
-        let currentStream = null;
-        let facingMode = "environment"; // "user" (ön) veya "environment" (arka)
-        let lastCapturedImage = null;
-
-        async function initCamera() {
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-            }
-
-            const constraints = {
-                video: {
-                    facingMode: facingMode,
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
-                },
-                audio: false
-            };
-
-            try {
-                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = currentStream;
-                statusText.innerText = "Kamera Aktif";
-            } catch (err) {
-                console.error("Kamera erişim hatası:", err);
-                statusText.innerText = "Kamera Erişimi Reddedildi veya Bulunamadı!";
-            }
-        }
-
-        function switchCamera() {
-            facingMode = facingMode === "user" ? "environment" : "user";
-            initCamera();
-        }
-
-        function takePhoto() {
-            if (!currentStream) return;
-
-            // Flaş efekti
-            flash.classList.add('active');
-            setTimeout(() => flash.classList.remove('active'), 300);
-
-            const context = canvas.getContext('2d');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            // Aynalama düzeltmesi (Ön kamera için)
-            if (facingMode === "user") {
-                context.translate(canvas.width, 0);
-                context.scale(-1, 1);
-            }
-
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            lastCapturedImage = canvas.toDataURL('image/jpeg', 0.95);
-            
-            // İndirme butonunu aktif et
-            downloadBtn.style.opacity = "1";
-            downloadBtn.style.pointerEvents = "auto";
-            statusText.innerText = "Fotoğraf Çekildi!";
-        }
-
-        function downloadPhoto() {
-            if (!lastCapturedImage) return;
-            
-            const timeStamp = new Date().toISOString().replace(/[:.]/g, "-");
-            downloadLink.href = lastCapturedImage;
-            downloadLink.download = `kamera-${timeStamp}.jpg`;
-            downloadLink.click();
-        }
-
-        // Uygulamayı başlat
-        window.addEventListener('DOMContentLoaded', initCamera);
-    </script>
-</body>
-  </html>
-  
