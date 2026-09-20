@@ -23,36 +23,46 @@ jobs:
       run: |
         mkdir -p app/src/main/java/com/example/cameraapp
         mkdir -p app/src/main/res/layout
-        mkdir -p app/src/main/res/values
 
-        # Root build.gradle
+        # Kök build.gradle (Güncel Plugins yapısı)
         cat << 'EOF' > build.gradle
-        buildscript {
-            repositories { google(); mavenCentral() }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:8.1.1'
-                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.10'
-            }
-        }
-        allprojects {
-            repositories { google(); mavenCentral() }
+        plugins {
+            id 'com.android.application' version '8.1.1' apply false
+            id 'org.jetbrains.kotlin.android' version '1.8.10' apply false
         }
         EOF
 
         # settings.gradle
         cat << 'EOF' > settings.gradle
-        include ':app'
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
         rootProject.name = "CameraApp"
+        include ':app'
         EOF
 
         # app/build.gradle
         cat << 'EOF' > app/build.gradle
-        apply plugin: 'com.android.application'
-        apply plugin: 'kotlin-android'
+        plugins {
+            id 'com.android.application'
+            id 'org.jetbrains.kotlin.android'
+        }
 
         android {
-            compileSdk 33
             namespace 'com.example.cameraapp'
+            compileSdk 33
+
             defaultConfig {
                 applicationId "com.example.cameraapp"
                 minSdk 21
@@ -60,11 +70,14 @@ jobs:
                 versionCode 1
                 versionName "1.0"
             }
+
             compileOptions {
                 sourceCompatibility JavaVersion.VERSION_17
                 targetCompatibility JavaVersion.VERSION_17
             }
-            kotlinOptions { jvmTarget = '17' }
+            kotlinOptions {
+                jvmTarget = '17'
+            }
         }
 
         dependencies {
@@ -89,7 +102,6 @@ jobs:
             <uses-permission android:name="android.permission.CAMERA" />
             <application
                 android:allowBackup="true"
-                android:icon="@mipmap/ic_launcher"
                 android:label="Pro Kamera"
                 android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar">
                 <activity android:name=".MainActivity" android:exported="true">
@@ -102,7 +114,7 @@ jobs:
         </manifest>
         EOF
 
-        # activity_main.xml (Arayüz)
+        # activity_main.xml
         cat << 'EOF' > app/src/main/res/layout/activity_main.xml
         <?xml version="1.0" encoding="utf-8"?>
         <androidx.constraintlayout.widget.ConstraintLayout 
@@ -126,7 +138,7 @@ jobs:
         </androidx.constraintlayout.widget.ConstraintLayout>
         EOF
 
-        # MainActivity.kt (Kamera Mantık Kodu)
+        # MainActivity.kt
         cat << 'EOF' > app/src/main/java/com/example/cameraapp/MainActivity.kt
         package com.example.cameraapp
 
@@ -188,7 +200,7 @@ jobs:
                     ContextCompat.getMainExecutor(this),
                     object : ImageCapture.OnImageCapturedCallback() {
                         override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
-                            Toast.makeText(baseContext, "Fotoğraf Başarıyla Çekildi!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(baseContext, "Fotoğraf Çekildi!", Toast.LENGTH_SHORT).show()
                             image.close()
                         }
                         override fun onError(exc: ImageCaptureException) {
@@ -204,9 +216,9 @@ jobs:
         }
         EOF
 
-    - name: 4. Gradle Wrapper Kurulumu
+    - name: 4. Gradle Wrapper Kur (Uyumlu Sürüm)
       run: |
-        gradle wrapper
+        gradle wrapper --gradle-version 8.2 --distribution-type bin
 
     - name: 5. APK Derleme İşlemi (Build)
       run: ./gradlew assembleDebug --stacktrace
